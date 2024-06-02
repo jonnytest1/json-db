@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "strictNullChecks": true,
+        "strict": true,
+        "sourceMap": true,
+        "types": [
+            "node",
+            "jest"
+        ]
+    },
+    "include": [
+        "./src/**/*.ts"
+    ],
+    "files": [
+        "./src/index.ts"
+    ]
+}

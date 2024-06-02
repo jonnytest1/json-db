@@ -1,0 +1,8 @@
+node_modules
+/data
+.history
+history
+test/dataset.spec.ts
+/test/data
+!/test/data/*
+src/auth.ts
