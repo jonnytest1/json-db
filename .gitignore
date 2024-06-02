@@ -3,6 +3,8 @@ node_modules
 .history
 history
 test/dataset.spec.ts
-/test/data
-!/test/data/*
 src/auth.ts
+/test/data/*
+!/test/data/*test-storage*
+!/test/data/*partial-write*
+.vscode/settings.json
