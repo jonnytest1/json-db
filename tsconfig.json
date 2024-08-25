@@ -3,6 +3,8 @@
         "strictNullChecks": true,
         "strict": true,
         "sourceMap": true,
+        "downlevelIteration": true,
+        "target": "ES2020",
         "types": [
             "node",
             "jest"
@@ -12,6 +14,7 @@
         "./src/**/*.ts"
     ],
     "files": [
-        "./src/index.ts"
+        "./src/index.ts",
+        "./src/worker/load-worker.ts"
     ]
 }

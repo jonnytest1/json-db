@@ -1,16 +1,26 @@
 import { mkdirSync, readFileSync } from 'fs'
-import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import { Context, getObjectType, StorageObj } from '../data-context'
-import { get, set } from '../mem-cache'
+import { abortCurrentCacheBuild, get, set, type CacheObject } from '../mem-cache'
+import { hashToPath } from '../util/hash'
 
 
-export async function storeObject(obj: StorageObj, path: string, timestamp?: number, hint?: string) {
-    mkdirSync(path.toLowerCase(), {
+export interface StorageOptions {
+    pathHashed?: string | null
+    unhashedName?: string
+
+    cache?: CacheObject
+
+}
+
+
+export async function storeObject(obj: StorageObj, path: string, timestamp?: number, hint?: string, opts: StorageOptions = {}) {
+    const filepath = opts?.pathHashed ?? path
+    mkdirSync(filepath.toLowerCase(), {
         recursive: true,
     })
     let contextData: Partial<Context> = {}
-    const contextJsonPath = join(path, "context.json")
+    const contextJsonPath = join(filepath, "context.json")
     try {
         contextData = get(contextJsonPath)
     } catch (e) {
@@ -19,7 +29,15 @@ export async function storeObject(obj: StorageObj, path: string, timestamp?: num
     contextData = {
         ...contextData,
         type: getObjectType(obj),
-        hint
+        hint,
+
+    }
+
+    if (opts.pathHashed && !opts.unhashedName) {
+        debugger;
+    }
+    if (opts.unhashedName !== undefined) {
+        contextData.unhashedPathName = opts.unhashedName
     }
 
     if (contextData.type === "json") {
@@ -33,15 +51,31 @@ export async function storeObject(obj: StorageObj, path: string, timestamp?: num
         const keys = Object.keys(objectTyped);
         Promise.all(keys.map(async key => {
             let subObj = objectTyped[key];
+            let pathHashed = null
             if (obj && obj instanceof Array) {
                 subObj = obj[+key]
             }
-            await storeObject(subObj, join(path, encodeURIComponent(key)), timestamp);
+            // not hashing array index because inde will be shorter than hash
+            if (opts.pathHashed && contextData.type !== "array") {
+                pathHashed = join(filepath, hashToPath(key))
+            }
+
+            if ((!key || key == "undefined") && pathHashed) {
+                debugger;
+            }
+            await storeObject(subObj, join(filepath, encodeURIComponent(key)), timestamp, undefined, {
+                pathHashed,
+                unhashedName: key
+            });
         }))
 
         if (contextData.type == "array" && obj instanceof Array) {
             contextData.length = obj.length
         }
+    }
+
+    if (!contextData.unhashedPathName && contextJsonPath.includes("kli_2")) {
+        debugger
     }
 
     set(contextJsonPath, contextData as Context)

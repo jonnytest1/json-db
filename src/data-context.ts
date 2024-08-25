@@ -1,22 +1,23 @@
 
 
-interface ArrayContext {
-    type: "array",
-    length: number
-    timed?: number,
+interface BaseContext {
+    unhashedPathName?: string,
     hint?: string
+    timed?: number
 }
 
-interface ObjectContext {
-    type: "object"
-    timed?: number,
-    hint?: string
+
+interface ArrayContext extends BaseContext {
+    type: "array",
+    length: number
 }
-interface JsonContext {
+
+interface ObjectContext extends BaseContext {
+    type: "object"
+}
+interface JsonContext extends BaseContext {
     type: "json",
     data: string
-    timed?: number,
-    hint?: string
 }
 
 export interface CorruptedContext {

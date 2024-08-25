@@ -1,22 +1,28 @@
 import * as express from "express"
 import { mkdirSync, writeFileSync } from 'fs';
-import { request } from 'http';
 import { dirname, join } from 'path';
 import { isAuthorized } from './auth';
 import { dataFolder, historyFolder } from './constant';
 import { deleteEndpoint } from './endpoints/delete-endpoint';
 import { origins } from './endpoints/origins-endpoint';
 import { addObject } from './iterators/add-iterator';
-import { LoadOptions, loadStorageObject } from './iterators/load-iterator';
+import { loadStorageObject } from './iterators/load-iterator';
 import { storeObject } from './iterators/store-iterator';
-import { requestCache } from './mem-cache';
+import { clearMemCache } from './mem-cache';
 import { parseArgsToEnv } from './args';
 import { readFile, readdir } from 'fs/promises';
+import { hashToPath } from "./util/hash"
+import { loadEndpoint } from './endpoints/load-endpoint';
+import { storeEndpoint } from './endpoints/store-endpoint';
 
 parseArgsToEnv();
 const port = +(process.env.SERVER_PORT ?? 23422)
 
 const app = express()
+
+
+
+
 app.use(express.json({
     limit: "1000mb",
     strict: false,
@@ -25,9 +31,10 @@ app.use(express.text({
     limit: "1000mb"
 }))
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Origin', req.header("origin"));
     res.header('Access-Control-Allow-Private-Network', 'true');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept,authorization');
+    res.header('Access-Control-Allow-Methods', 'DELETE,POST,GET');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept,authorization,hint,time,pathhashed');
     next();
 });
 
@@ -38,8 +45,8 @@ app.post("/json/add", async (req, res) => {
     try {
         const requestUrl = new URL(req.url, "http://localhost")
         const auth = req.headers.authorization
-        const root = requestUrl.searchParams.get("rootstorage")
-        if (!auth || !root) {
+        const urlDecodedRoot = requestUrl.searchParams.get("rootstorage")
+        if (!auth || !urlDecodedRoot) {
             res.status(400).send("invalid params");
             return;
         }
@@ -48,16 +55,24 @@ app.post("/json/add", async (req, res) => {
             return
         }
         const data = req.body;
-        let startPath = join(dataFolder, encodeURIComponent(auth), encodeURIComponent(root))
+        let startPath = join(dataFolder, encodeURIComponent(auth), encodeURIComponent(urlDecodedRoot))
         const subPAthStr = requestUrl.searchParams.get("subpath")
+        let pathHashed: string | null = null
         if (subPAthStr) {
             const subPAthParts = JSON.parse(subPAthStr) as Array<string>
             startPath = join(startPath, ...subPAthParts.map(part => encodeURIComponent(part)))
+
+
+            if (req.headers.pathhashed) {
+                pathHashed = join(startPath, ...subPAthParts.map(part => {
+                    return hashToPath(part);
+                }))
+            }
         } else {
             res.status(400).send("invalid param");
             return
         }
-        delete requestCache[`${auth}${root}`]
+        clearMemCache(auth, urlDecodedRoot)
 
         let hint = ""
         if (req.headers.hint) {
@@ -75,53 +90,14 @@ app.post("/json/add", async (req, res) => {
 })
 
 
-app.post("/json", async (req, res) => {
-    try {
-        const requestUrl = new URL(req.url, "http://localhost")
-        const auth = req.headers.authorization
-        const root = requestUrl.searchParams.get("rootstorage")
-        if (!auth || !root) {
-            res.send("invalid params");
-            return;
-        }
-        if (!isAuthorized(auth)) {
-            res.send("invalid auth");
-            return
-        }
 
-
-
-        const data = req.body;
-        let startPath = join(dataFolder, encodeURIComponent(auth), encodeURIComponent(root))
-        const subPAthStr = requestUrl.searchParams.get("subpath")
-        if (subPAthStr) {
-            const subPAthParts = JSON.parse(subPAthStr) as Array<string>
-            startPath = join(startPath, ...subPAthParts.map(part => encodeURIComponent(part)))
-        }
-        delete requestCache[`${auth}${root}`]
-        let hint = ""
-        if (req.headers.hint) {
-            hint = `\n\t\x1b[32m${req.headers.hint}`
-        }
-
-        console.log(`${new Date().toLocaleString()} storing for ${startPath} ${hint}`)
-        await storeObject(data, startPath, undefined, req.headers.hint ? `${req.headers.hint}` : undefined)
-
-
-
-        res.status(200).send()
-    } catch (e) {
-        res.status(500).send()
-        debugger
-        return
-    }
-})
+app.post("/json", storeEndpoint)
 
 app.get("/history", async (req, res) => {
     const auth = req.headers.authorization
     const requestUrl = new URL(req.url, "http://localhost")
-    const root = requestUrl.searchParams.get("rootstorage")
-    if (!auth || !root) {
+    const urlDecodedRoot = requestUrl.searchParams.get("rootstorage")
+    if (!auth || !urlDecodedRoot) {
         res.send("invalid params");
         return;
     }
@@ -142,7 +118,7 @@ app.get("/history", async (req, res) => {
     const files = historyEntries.filter(entry => entry.isDirectory())
         .map(async entry => {
             const version = entry.name;
-            const rootFolder = join(historySubFolder, entry.name, `${encodeURIComponent(root)}.json`)
+            const rootFolder = join(historySubFolder, entry.name, `${encodeURIComponent(urlDecodedRoot)}.json`)
             let file: string
             try {
                 file = await readFile(rootFolder, { encoding: "utf-8" })
@@ -244,59 +220,7 @@ app.post("/revert", async (req, res) => {
 
 })
 
-app.get("/json", async (req, res) => {
-    try {
-        const requestUrl = new URL(req.url, "http://localhost")
-        const auth = req.headers.authorization
-        const root = requestUrl.searchParams.get("rootstorage")
-        if (!auth || !root) {
-            res.send("invalid params");
-            return;
-        }
-        if (!isAuthorized(auth)) {
-            res.send("invalid auth");
-            return
-        }
-        const subPath = requestUrl.searchParams.get("subpath")
-        const timed = requestUrl.searchParams.get("timed")
-        const loadOptions: LoadOptions = {}
-
-        if (requestUrl.searchParams.get("withCorruptionCheck")) {
-            loadOptions.corruptionCheck = true
-        }
-
-        if (subPath) {
-            loadOptions.subPath = JSON.parse(subPath)
-        }
-
-        if (timed) {
-            loadOptions.timed = JSON.parse(timed)
-        }
-        const cacheKey = `${auth}${root}`;
-        if (!timed && requestCache[cacheKey] && !subPath) {
-            res.send(requestCache[cacheKey])
-            const startPath = join(dataFolder, encodeURIComponent(auth), encodeURIComponent(root))
-            const data = await loadStorageObject(startPath, loadOptions)
-            requestCache[cacheKey] = data.data
-            return
-        }
-        const startPath = join(dataFolder, encodeURIComponent(auth), encodeURIComponent(root))
-        const data = await loadStorageObject(startPath, loadOptions)
-        if (!timed && !subPath) {
-            requestCache[cacheKey] = data.data
-            const todayFolder = new Date().toISOString().split("T")[0]
-            const historyFile = join(historyFolder, encodeURIComponent(auth), todayFolder, encodeURIComponent(root) + ".json")
-            mkdirSync(dirname(historyFile), { recursive: true })
-            writeFileSync(historyFile, JSON.stringify(data.data, undefined, "  "))
-        }
-        res.send(data.data)
-    } catch (e) {
-        console.error(e)
-        res.status(500).send()
-        debugger
-        return
-    }
-})
+app.get("/json", loadEndpoint)
 
 
 

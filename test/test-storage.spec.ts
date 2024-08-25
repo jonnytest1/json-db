@@ -2,6 +2,8 @@ import { join } from 'path'
 import { storeObject } from "../src/iterators/store-iterator"
 import { loadStorageObject } from "../src/iterators/load-iterator"
 import { getTestFolder } from './test-util'
+import { addObject } from "../src/iterators/add-iterator"
+import { hashToPath } from '../src/util/hash'
 describe("it test", () => {
 
     it("recreates", async () => {
@@ -119,11 +121,30 @@ describe("it test", () => {
             timed: +new Date(+startDate + (oneHour * 0.5)),
         })
 
-        expect(data.testkey.test.length).toBe(3)
-        expect(data.testkey.test[0]).toBeUndefined()
-        expect(data.testkey.test[1]).toStrictEqual(testObj.testkey.test[1])
-        expect(data.testkey.test[2]).toStrictEqual(testObj.testkey.test[2])
-        expect(data.testkey.test2[0]).toStrictEqual(testObj.testkey.test2[0])
-        expect(data.testkey.test3[0]).toStrictEqual(testObj.testkey.test3[0])
+        expect(data.data.testkey.test.length).toBe(3)
+        expect(data.data.testkey.test[0]).toBeUndefined()
+        expect(data.data.testkey.test[1]).toStrictEqual(testObj.testkey.test[1])
+        expect(data.data.testkey.test[2]).toStrictEqual(testObj.testkey.test[2])
+        expect(data.data.testkey.test2[0]).toStrictEqual(testObj.testkey.test2[0])
+        expect(data.data.testkey.test3[0]).toStrictEqual(testObj.testkey.test3[0])
+    })
+
+
+    it("stores with hash", async () => {
+        const testPath = getTestFolder()
+        await storeObject({ test: 123, testAr: ["123"] }, testPath, undefined, undefined, {
+            pathHashed: `${testPath}`
+        })
+
+        const obj = await loadStorageObject(testPath)
+        expect(obj.data.test).toBe(123)
+        expect(obj.data.testAr).toStrictEqual(["123"])
+
+
+    })
+
+    it("test hash", () => {
+        const str = hashToPath("https%3a%2f%2fchapmanganato.to%2fmanga-hs984801%2fchapter-51.2%23name%3ashiboritoranaide%2c%2520onna%2520shounin-san")
+        debugger
     })
 })

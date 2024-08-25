@@ -1,10 +1,10 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { Context, StorageObj } from '../data-context';
-import { get, set } from '../mem-cache';
-import { storeObject } from './store-iterator';
+import { abortCurrentCacheBuild, get, set } from '../mem-cache';
+import { storeObject, type StorageOptions } from './store-iterator';
 
-export async function addObject(obj: StorageObj, path: string, hint?: string) {
+export async function addObject(obj: StorageObj, path: string, hint?: string, opts: StorageOptions = {}) {
     const arrayContextFile = join(path, "context.json")
     let context: Context;
     try {
@@ -18,7 +18,10 @@ export async function addObject(obj: StorageObj, path: string, hint?: string) {
     if (context.type !== "array") {
         throw new Error("invalid context type")
     }
-    await storeObject(obj, join(path, `${context.length}`), undefined, hint)
+    abortCurrentCacheBuild()
+    await storeObject(obj, join(path, `${context.length}`), undefined, hint, {
+        pathHashed: opts.pathHashed ? join(path, `${context.length}`) : undefined,
+    })
     context.length += 1;
 
 
