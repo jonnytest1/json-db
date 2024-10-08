@@ -34,6 +34,8 @@ const pendingLoad: Record<string, {
 let loadWorker: TypedWorker
 
 if (isMainThread) {
+    console.log("starting preload")
+
     loadWorker = createWorker("preload")
     loadWorker.postMessage({
         type: "preload"
